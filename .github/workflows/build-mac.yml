@@ -1,0 +1,38 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout original repo
+        uses: actions/checkout@v4
+        with:
+          repository: halilozat/jarvis
+          path: original
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install server dependencies
+        run: npm ci --prefix original/server
+
+      - name: Install web dependencies
+        run: npm ci --prefix original/web
+
+      - name: Build project
+        run: npm run build --prefix original
+
+      - name: Install Electron and electron-builder
+        run: npm install --no-save electron@36 electron-builder --prefix original
+
+      - name: Create Electron main process
+        run: |
+          mkdir -p original/desktop
+          cat > original/desktop/main.cjs
