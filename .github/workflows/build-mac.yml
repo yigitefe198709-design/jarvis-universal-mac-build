@@ -36,3 +36,27 @@ jobs:
         run: |
           mkdir -p original/desktop
           cat > original/desktop/main.cjs
+
+      - name: Patch package.json and build with electron-builder
+        run: |
+          cd original
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.main = 'desktop/main.cjs';
+            pkg.build = {
+              appId: 'ai.jarvis.personal',
+              productName: 'Jarvis Personal',
+              directories: { output: 'dist-mac' },
+              files: ['desktop/**','web/dist/**','server/dist/**','server/src/**','server/package.json','web/package.json'],
+              mac: { target: [{target:'dmg', arch:['universal']}], category: 'public.app-category.productivity' }
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac universal --publish never
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Personal.dmg
+          path: original/dist-mac/*.dmg
