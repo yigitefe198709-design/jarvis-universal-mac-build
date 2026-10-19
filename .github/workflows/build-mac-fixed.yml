@@ -1,0 +1,33 @@
+name: Jarvis Universal DMG Fixed
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: halilozat/jarvis
+          path: original
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run:  pm ci --prefix original/server && npm ci --prefix original/web && npm run build --prefix original
+      - run:  pm install --no-save electron@36 electron-builder@26 --prefix original
+      - name: Prepare desktop
+        run: |
+          mkdir -p original/desktop
+          printf "const {app,BrowserWindow}=require('electron');const path=require('path');app.whenReady().then(()=>{const w=new BrowserWindow({width:1280,height:850,webPreferences:{contextIsolation:true,nodeIntegration:false}});w.loadFile(path.join(__dirname,'../web/dist/index.html'));});app.on('window-all-closed',()=>app.quit());" > original/desktop/main.cjs
+          node -e "const fs=require('fs'),p='original/package.json',j=JSON.parse(fs.readFileSync(p));j.version='1.0.0';j.main='desktop/main.cjs';j.build={appId:'ai.jarvis.personal',productName:'Jarvis Personal',directories:{output:'dist-mac'},files:['desktop/**','web/dist/**'],mac:{target:[{target:'dmg',arch:['universal']}],category:'public.app-category.productivity'}};fs.writeFileSync(p,JSON.stringify(j,null,2));"
+      - name: Build DMG
+        working-directory: original
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run:  px electron-builder --mac universal --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Universal-Mac
+          path: original/dist-mac/*.dmg
+          if-no-files-found: error
