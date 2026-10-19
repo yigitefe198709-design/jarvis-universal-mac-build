@@ -1,1 +1,45 @@
-  
+name: Jarvis Desktop Build
+on:
+  push:
+    branches:
+      - jarvis-ai-v15-build
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            command: build:mac
+            artifact: jarvis-macos-dmg
+            files: dist/*.dmg
+          - os: windows-latest
+            command: build:win
+            artifact: jarvis-windows-installer
+            files: dist/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run preflight
+      - run: npm run ${{ matrix.command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
