@@ -1,0 +1,59 @@
+name: Jarvis Integrated Desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: halilozat/jarvis
+          path: original
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and build
+        run: |
+          cd original/server
+          npm ci
+          cd ../web
+          npm ci
+          cd ..
+          npm run build
+          npm install --no-save electron@36 electron-builder@26
+      - name: Configure integrated desktop
+        run: |
+          mkdir -p original/desktop
+          cat > original/desktop/main.cjs &lt;&lt;'EOF'
+          const {app,BrowserWindow,session,dialog}=require('electron');
+          const {spawn}=require('node:child_process');
+          const path=require('node:path');
+          let server;
+          const base=path.resolve(__dirname,'..');
+          const port=18787;
+          app.whenReady().then(async()=>{
+            session.defaultSession.setPermissionRequestHandler((_wc,permission,callback)=>callback(['media','microphone','camera'].includes(permission)));
+            server=spawn(process.execPath,[path.join(base,'server/node_modules/tsx/dist/cli.mjs'),path.join(base,'server/src/index.ts')],{cwd:path.join(base,'server'),env:{...process.env,ELECTRON_RUN_AS_NODE:'1',PORT:String(port)},stdio:'ignore'});
+            const win=new BrowserWindow({width:1280,height:850,webPreferences:{contextIsolation:true,nodeIntegration:false}});
+            let ready=false;
+            for(let i=0;i&lt;50;i++){try{const r=await fetch('http://127.0.0.1:'+port+'/api/time');if(r.ok){ready=true;break;}}catch{} await new Promise(r=>setTimeout(r,400));}
+            if(ready) await win.loadURL('http://127.0.0.1:'+port);
+            else {dialog.showErrorBox('Jarvis','Yerel sunucu baslatilamadi.');await win.loadURL('data:text/html,&lt;h2&gt;Jarvis sunucusu baslatilamadi&lt;/h2&gt;');}
+          });
+          app.on('before-quit',()=>{if(server)server.kill();});
+          app.on('window-all-closed',()=>app.quit());
+          EOF
+ ode -e "const fs=require('fs'),p='original/package.json',j=JSON.parse(fs.readFileSync(p));j.version='1.1.0';j.main='desktop/main.cjs';j.build={appId:'ai.jarvis.personal',productName:'Jarvis Personal',asar:false,directories:{output:'dist-mac'},files:['desktop/**','server/src/**','server/node_modules/**','server/package.json','web/dist/**'],mac:{target:'dmg',category:'public.app-category.productivity',extendInfo:{NSMicrophoneUsageDescription:'Jarvis sesli konusma icin mikrofon kullanir.',NSCameraUsageDescription:'Jarvis kamera ile goruntulu yardim icin izin ister.'}}};fs.writeFileSync(p,JSON.stringify(j,null,2));"
+      - name: Package universal DMG
+        working-directory: original
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm exec -- electron-builder --mac dmg --universal --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Integrated-Mac
+          path: original/dist-mac/*.dmg
+          if-no-files-found: error
